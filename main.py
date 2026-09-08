@@ -15,7 +15,7 @@ PORT = int(os.getenv("PORT", "10000"))
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{BASE_URL}{WEBHOOK_PATH}" if BASE_URL else None
 
-ADMIN_ID = 8702341067
+ADMIN_ID = 1145626218
 HVPN_BOT = "@H_VPNbot"
 
 dp = Dispatcher()
