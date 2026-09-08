@@ -7,16 +7,25 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 TOKEN = os.getenv("BOT_TOKEN")
+
 if not TOKEN:
     raise RuntimeError("BOT_TOKEN environment variable is not set")
 
 BASE_URL = os.getenv("RENDER_EXTERNAL_URL")
 PORT = int(os.getenv("PORT", "10000"))
+
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{BASE_URL}{WEBHOOK_PATH}" if BASE_URL else None
 
+# Telegram ID ادمین
 ADMIN_ID = 1145626218
-HVPN_BOT = "@H_VPNbot"
+
+# ربات‌های تأمین‌کننده
+PROVIDERS = [
+    "@H_VPNbot",
+    "@mxcloudbot",
+    "@SvnProBot",
+]
 
 dp = Dispatcher()
 
@@ -26,18 +35,18 @@ def menu():
         keyboard=[
             [
                 KeyboardButton(text="📱 سرویس‌های من"),
-                KeyboardButton(text="📊 استعلام وضعیت")
+                KeyboardButton(text="📊 استعلام وضعیت"),
             ],
             [
                 KeyboardButton(text="🛒 خرید سرویس"),
-                KeyboardButton(text="🔄 تمدید سرویس")
+                KeyboardButton(text="🔄 تمدید سرویس"),
             ],
             [
                 KeyboardButton(text="💰 کیف پول"),
-                KeyboardButton(text="🎫 پشتیبانی")
+                KeyboardButton(text="🎫 پشتیبانی"),
             ],
         ],
-        resize_keyboard=True
+        resize_keyboard=True,
     )
 
 
@@ -47,7 +56,7 @@ async def start(message: types.Message):
         "سلام 👋\n"
         "به پنل خدمات VPN خوش آمدید.\n\n"
         "از منوی زیر سرویس‌های خود را مدیریت کنید.",
-        reply_markup=menu()
+        reply_markup=menu(),
     )
 
 
@@ -56,55 +65,73 @@ async def all_messages(message: types.Message):
 
     text = (message.text or "").strip()
 
-    # نمایش Telegram ID
+    # نمایش ID
     if text == "/id":
         await message.answer(
             f"Telegram ID شما:\n{message.from_user.id}"
         )
         return
 
-    # تست اتصال به H VPN
-    if text in ["/test_hvpn", "/test_hvpn@Ehvpnonebot"]:
+    # تست هر سه ربات
+    if text in ["/test_all", "/test_all@Ehvpnonebot"]:
 
         if message.from_user.id != ADMIN_ID:
             return
 
-        await message.answer("🟡 تست اتصال به @H_VPNbot شروع شد...")
+        await message.answer(
+            "🟡 تست ارتباط با هر سه ربات شروع شد...\n\n"
+            "لطفاً چند ثانیه صبر کن."
+        )
 
-        try:
-            sent = await message.bot.send_message(
-                chat_id=HVPN_BOT,
-                text="/start"
-            )
+        results = []
 
-            await message.answer(
-                "✅ پیام به @H_VPNbot ارسال شد.\n\n"
-                f"Message ID: {sent.message_id}"
-            )
+        for provider in PROVIDERS:
+            try:
+                sent = await message.bot.send_message(
+                    chat_id=provider,
+                    text="/start",
+                )
 
-        except Exception as e:
-            await message.answer(
-                "❌ ارسال به @H_VPNbot ناموفق بود.\n\n"
-                f"{type(e).__name__}: {e}"
-            )
+                results.append(
+                    f"✅ {provider}\n"
+                    f"ارسال موفق — Message ID: {sent.message_id}"
+                )
 
-        return
+            except Exception as e:
+                results.append(
+                    f"❌ {provider}\n"
+                    f"{type(e).__name__}: {e}"
+                )
 
-    # دریافت پاسخ H VPN
-    if (
-        message.from_user
-        and message.from_user.username
-        and message.from_user.username.lower() == "h_vpnbot"
-    ):
-
-        response = message.text or message.caption or "پیام بدون متن"
-
-        await message.bot.send_message(
-            ADMIN_ID,
-            "📥 پاسخ @H_VPNbot:\n\n" + response
+        await message.answer(
+            "📊 نتیجه تست:\n\n"
+            + "\n\n".join(results)
         )
 
         return
+
+    # دریافت پاسخ ربات‌های تأمین‌کننده
+    if message.from_user and message.from_user.username:
+
+        username = message.from_user.username.lower()
+
+        provider_names = {
+            "h_vpnbot": "@H_VPNbot",
+            "mxcloudbot": "@mxcloudbot",
+            "svnprobot": "@SvnProBot",
+        }
+
+        if username in provider_names:
+
+            response = message.text or message.caption or "پیام بدون متن"
+
+            await message.bot.send_message(
+                ADMIN_ID,
+                f"📥 پاسخ {provider_names[username]}:\n\n"
+                f"{response}",
+            )
+
+            return
 
     # منوی اصلی
     if text == "📱 سرویس‌های من":
@@ -140,7 +167,7 @@ async def all_messages(message: types.Message):
     else:
         await message.answer(
             "لطفاً یکی از گزینه‌های منو را انتخاب کنید.",
-            reply_markup=menu()
+            reply_markup=menu(),
         )
 
 
@@ -163,6 +190,7 @@ async def health(request):
 
 
 async def main():
+
     bot = Bot(TOKEN)
 
     app = web.Application()
@@ -180,7 +208,7 @@ async def main():
 
     handler.register(
         app,
-        path=WEBHOOK_PATH
+        path=WEBHOOK_PATH,
     )
 
     dp.startup.register(on_startup)
@@ -189,7 +217,7 @@ async def main():
     setup_application(
         app,
         dp,
-        bot=bot
+        bot=bot,
     )
 
     runner = web.AppRunner(app)
@@ -198,7 +226,7 @@ async def main():
     site = web.TCPSite(
         runner,
         "0.0.0.0",
-        PORT
+        PORT,
     )
 
     await site.start()
