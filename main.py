@@ -10,13 +10,7 @@ from aiogram.webhook.aiohttp_server import (
     setup_application,
 )
 
-
-# =========================================================
-# CONFIG
-# =========================================================
-
 TOKEN = os.getenv("BOT_TOKEN")
-
 if not TOKEN:
     raise RuntimeError("BOT_TOKEN environment variable is not set")
 
@@ -28,25 +22,35 @@ WEBHOOK_URL = f"{BASE_URL}{WEBHOOK_PATH}" if BASE_URL else None
 
 ADMIN_ID = 1145626218
 
-# اگر در Render قرار داده شده باشد استفاده می‌شود
-ENV_BUSINESS_CONNECTION_ID = os.getenv(
-    "BUSINESS_CONNECTION_ID"
-)
-
-PROVIDERS = [
-    "@H_VPNbot",
-    "@mxcloudbot",
-    "@SvnProBot",
-]
-
+# اگر خواستی بعداً از Render تنظیمش کنی
+ENV_BUSINESS_CONNECTION_ID = os.getenv("BUSINESS_CONNECTION_ID")
 
 # =========================================================
-# TELEGRAM
+# PROVIDERS
 # =========================================================
+
+PROVIDERS = {
+    "HVPN": {
+        "username": "@H_VPNbot",
+        "chat_id": 6683626212,
+    },
+
+    # فعلاً Chat ID دو سرویس دیگر را نداریم
+    # بعد از تست از Business Message استخراج می‌کنیم
+    "MXCloud": {
+        "username": "@mxcloudbot",
+        "chat_id": None,
+    },
+
+    "SVN": {
+        "username": "@SvnProBot",
+        "chat_id": None,
+    },
+}
 
 dp = Dispatcher()
 
-# Business Connection های دریافت‌شده
+# Business connections دریافت‌شده
 business_connections = {}
 
 
@@ -55,7 +59,6 @@ business_connections = {}
 # =========================================================
 
 def menu():
-
     return ReplyKeyboardMarkup(
         keyboard=[
             [
@@ -81,7 +84,6 @@ def menu():
 
 @dp.message(CommandStart())
 async def start(message: types.Message):
-
     await message.answer(
         "سلام 👋\n"
         "به پنل خدمات VPN خوش آمدید.\n\n"
@@ -98,57 +100,30 @@ async def start(message: types.Message):
 async def business_connection_handler(
     business_connection: types.BusinessConnection,
 ):
-
     connection_id = business_connection.id
 
     business_connections[connection_id] = business_connection
 
-    print("")
-    print("==========================================")
     print("BUSINESS CONNECTION RECEIVED")
-    print("==========================================")
     print("ID:", connection_id)
     print("USER ID:", business_connection.user.id)
-    print(
-        "USERNAME:",
-        business_connection.user.username
-    )
-    print(
-        "CAN REPLY:",
-        business_connection.can_reply
-    )
-    print(
-        "IS ENABLED:",
-        business_connection.is_enabled
-    )
-    print("==========================================")
-    print("")
+    print("USERNAME:", business_connection.user.username)
+    print("CAN REPLY:", business_connection.can_reply)
+    print("IS ENABLED:", business_connection.is_enabled)
 
-
-# =========================================================
-# BUSINESS CONNECTION HELPER
-# =========================================================
 
 def get_business_connection_id():
-
-    # اول اتصال‌هایی که همین الان از Telegram گرفته‌ایم
     if business_connections:
+        return list(business_connections.keys())[-1]
 
-        # آخرین اتصال
-        return list(
-            business_connections.keys()
-        )[-1]
-
-    # اگر در Environment ذخیره شده باشد
     if ENV_BUSINESS_CONNECTION_ID:
-
         return ENV_BUSINESS_CONNECTION_ID
 
     return None
 
 
 # =========================================================
-# SHOW BUSINESS STATUS
+# BUSINESS STATUS
 # =========================================================
 
 @dp.message(Command("business"))
@@ -160,17 +135,12 @@ async def business_status(message: types.Message):
     connection_id = get_business_connection_id()
 
     if not connection_id:
-
         await message.answer(
-            "❌ هیچ Business Connection پیدا نشد.\n\n"
-            "اکانت Business را به @Ehvpnonebot وصل کن."
+            "❌ هیچ Business Connection پیدا نشد."
         )
-
         return
 
-    connection = business_connections.get(
-        connection_id
-    )
+    connection = business_connections.get(connection_id)
 
     if connection:
 
@@ -181,8 +151,7 @@ async def business_status(message: types.Message):
 
         await message.answer(
             "✅ Business Connection فعال است.\n\n"
-            f"Connection ID:\n"
-            f"{connection_id}\n\n"
+            f"Connection ID:\n{connection_id}\n\n"
             f"User ID: {connection.user.id}\n"
             f"Username: {username}\n"
             f"Can Reply: {connection.can_reply}\n"
@@ -193,19 +162,45 @@ async def business_status(message: types.Message):
 
         await message.answer(
             "✅ Business Connection ID پیدا شد.\n\n"
-            f"Connection ID:\n{connection_id}\n\n"
-            "اطلاعات کامل اتصال در حافظه فعلی بات موجود نیست."
+            f"Connection ID:\n{connection_id}"
         )
 
 
 # =========================================================
-# TEST BUSINESS -> H VPN
+# SEND TO PROVIDER
+# =========================================================
+
+async def send_to_provider(
+    bot: Bot,
+    connection_id: str,
+    provider_key: str,
+    text: str,
+):
+
+    provider = PROVIDERS[provider_key]
+
+    chat_id = provider["chat_id"]
+
+    if not chat_id:
+        raise RuntimeError(
+            f"Chat ID برای {provider['username']} هنوز ثبت نشده است."
+        )
+
+    sent = await bot.send_message(
+        business_connection_id=connection_id,
+        chat_id=chat_id,
+        text=text,
+    )
+
+    return sent
+
+
+# =========================================================
+# TEST HVPN
 # =========================================================
 
 @dp.message(Command("test_hvpn_business"))
-async def test_hvpn_business(
-    message: types.Message
-):
+async def test_hvpn_business(message: types.Message):
 
     if message.from_user.id != ADMIN_ID:
         return
@@ -213,75 +208,63 @@ async def test_hvpn_business(
     connection_id = get_business_connection_id()
 
     if not connection_id:
-
         await message.answer(
             "❌ Business Connection پیدا نشد."
         )
-
         return
 
-    connection = business_connections.get(
-        connection_id
-    )
+    connection = business_connections.get(connection_id)
 
     if connection:
 
         if not connection.is_enabled:
-
             await message.answer(
                 "❌ Business Connection غیرفعال است."
             )
-
             return
 
         if not connection.can_reply:
-
             await message.answer(
-                "❌ این Business Connection اجازه پاسخ دادن ندارد."
+                "❌ Business Connection اجازه پاسخ دادن ندارد."
             )
-
             return
 
     await message.answer(
-        "🟡 تست واقعی شروع شد...\n\n"
-        "در حال ارسال /start به @H_VPNbot "
-        "از طریق Business Connection..."
+        "🟡 ارسال /start به H_VPNbot..."
     )
 
     try:
 
-        sent = await message.bot.send_message(
-            business_connection_id=connection_id,
-            chat_id="@H_VPNbot",
-            text="/start",
+        sent = await send_to_provider(
+            message.bot,
+            connection_id,
+            "HVPN",
+            "/start",
         )
 
         await message.answer(
-            "✅ Telegram پیام را قبول کرد.\n\n"
-            f"Provider: @H_VPNbot\n"
+            "✅ پیام با موفقیت ارسال شد.\n\n"
+            "Provider: @H_VPNbot\n"
+            f"Chat ID: {PROVIDERS['HVPN']['chat_id']}\n"
             f"Message ID: {sent.message_id}\n\n"
-            "حالا منتظر پاسخ Provider هستیم."
+            "⏳ منتظر پاسخ Provider هستیم."
         )
 
     except Exception as e:
 
         await message.answer(
             "❌ ارسال ناموفق بود.\n\n"
-            f"Error Type:\n"
-            f"{type(e).__name__}\n\n"
-            f"Error:\n"
-            f"{e}"
+            f"Error Type:\n{type(e).__name__}\n\n"
+            f"Error:\n{e}"
         )
 
 
 # =========================================================
-# TEST ALL PROVIDERS THROUGH BUSINESS
+# TEST ALL PROVIDERS
 # =========================================================
 
 @dp.message(Command("test_business_all"))
-async def test_business_all(
-    message: types.Message
-):
+async def test_business_all(message: types.Message):
 
     if message.from_user.id != ADMIN_ID:
         return
@@ -289,64 +272,66 @@ async def test_business_all(
     connection_id = get_business_connection_id()
 
     if not connection_id:
-
         await message.answer(
             "❌ Business Connection پیدا نشد."
         )
-
         return
 
-    connection = business_connections.get(
-        connection_id
-    )
+    connection = business_connections.get(connection_id)
 
     if connection:
 
         if not connection.is_enabled:
-
             await message.answer(
                 "❌ Business Connection غیرفعال است."
             )
-
             return
 
         if not connection.can_reply:
-
             await message.answer(
-                "❌ Business Connection اجازه ارسال پیام ندارد."
+                "❌ Business Connection اجازه ارسال ندارد."
             )
-
             return
 
     await message.answer(
-        "🟡 تست هر سه Provider شروع شد..."
+        "🟡 تست Providerها شروع شد..."
     )
 
     results = []
 
-    for provider in PROVIDERS:
+    for provider_key, provider in PROVIDERS.items():
+
+        if not provider["chat_id"]:
+
+            results.append(
+                f"🟡 {provider['username']}\n"
+                "Chat ID هنوز ثبت نشده است."
+            )
+
+            continue
 
         try:
 
-            sent = await message.bot.send_message(
-                business_connection_id=connection_id,
-                chat_id=provider,
-                text="/start",
+            sent = await send_to_provider(
+                message.bot,
+                connection_id,
+                provider_key,
+                "/start",
             )
 
             results.append(
-                f"✅ {provider}\n"
+                f"✅ {provider['username']}\n"
+                f"Chat ID: {provider['chat_id']}\n"
                 f"Message ID: {sent.message_id}"
             )
 
         except Exception as e:
 
             results.append(
-                f"❌ {provider}\n"
+                f"❌ {provider['username']}\n"
                 f"{type(e).__name__}: {e}"
             )
 
-        # جلوگیری از ارسال خیلی سریع
         await asyncio.sleep(2)
 
     await message.answer(
@@ -356,26 +341,22 @@ async def test_business_all(
 
 
 # =========================================================
-# BUSINESS MESSAGES
+# RECEIVE BUSINESS MESSAGES
 # =========================================================
 
 @dp.business_message()
 async def business_message_handler(
-    message: types.Message
+    message: types.Message,
 ):
 
-    print("")
-    print("==========================================")
+    print("===================================")
     print("BUSINESS MESSAGE RECEIVED")
-    print("==========================================")
     print("Connection ID:", message.business_connection_id)
     print("Chat ID:", message.chat.id)
+    print("Chat Type:", message.chat.type)
+    print("Username:", message.chat.username)
     print("Text:", message.text)
-    print("==========================================")
-    print("")
-
-    # اگر پیام از Provider آمد،
-    # فعلاً برای ادمین ارسال می‌کنیم.
+    print("===================================")
 
     response = (
         message.text
@@ -392,8 +373,12 @@ async def business_message_handler(
             f"{message.business_connection_id}\n\n"
             f"Chat ID:\n"
             f"{message.chat.id}\n\n"
-            f"متن:\n"
-            f"{response}"
+            f"Username:\n"
+            f"@{message.chat.username}"
+            if message.chat.username
+            else
+            "Username:\nندارد\n\n"
+            f"متن:\n{response}"
         )
 
     except Exception as e:
@@ -405,12 +390,12 @@ async def business_message_handler(
 
 
 # =========================================================
-# BUSINESS EDITED MESSAGES
+# EDITED BUSINESS MESSAGE
 # =========================================================
 
 @dp.edited_business_message()
 async def edited_business_message_handler(
-    message: types.Message
+    message: types.Message,
 ):
 
     print(
@@ -426,16 +411,11 @@ async def edited_business_message_handler(
 # =========================================================
 
 @dp.message()
-async def all_messages(
-    message: types.Message
-):
+async def all_messages(message: types.Message):
 
     text = (message.text or "").strip()
 
-    # -----------------------------------------------------
-    # ID
-    # -----------------------------------------------------
-
+    # Telegram ID
     if text == "/id":
 
         await message.answer(
@@ -445,10 +425,7 @@ async def all_messages(
 
         return
 
-    # -----------------------------------------------------
-    # OLD DIRECT BOT TEST
-    # -----------------------------------------------------
-
+    # تست ارتباط مستقیم قدیمی
     if text in [
         "/test_all",
         "/test_all@Ehvpnonebot",
@@ -463,24 +440,26 @@ async def all_messages(
 
         results = []
 
-        for provider in PROVIDERS:
+        for provider_key, provider in PROVIDERS.items():
 
             try:
 
                 sent = await message.bot.send_message(
-                    chat_id=provider,
+                    chat_id=provider["chat_id"]
+                    if provider["chat_id"]
+                    else provider["username"],
                     text="/start",
                 )
 
                 results.append(
-                    f"✅ {provider}\n"
+                    f"✅ {provider['username']}\n"
                     f"Message ID: {sent.message_id}"
                 )
 
             except Exception as e:
 
                 results.append(
-                    f"❌ {provider}\n"
+                    f"❌ {provider['username']}\n"
                     f"{type(e).__name__}: {e}"
                 )
 
@@ -491,9 +470,7 @@ async def all_messages(
 
         return
 
-    # -----------------------------------------------------
     # MENU
-    # -----------------------------------------------------
 
     if text == "📱 سرویس‌های من":
 
@@ -504,31 +481,32 @@ async def all_messages(
     elif text == "📊 استعلام وضعیت":
 
         await message.answer(
-            "سیستم استعلام در حال آماده‌سازی است."
+            "🔄 سیستم استعلام در حال آماده‌سازی است."
         )
 
     elif text == "🛒 خرید سرویس":
 
         await message.answer(
-            "بخش خرید به‌زودی فعال می‌شود."
+            "🛒 بخش خرید به‌زودی فعال می‌شود."
         )
 
     elif text == "🔄 تمدید سرویس":
 
         await message.answer(
-            "بخش تمدید به‌زودی فعال می‌شود."
+            "🔄 بخش تمدید به‌زودی فعال می‌شود."
         )
 
     elif text == "💰 کیف پول":
 
         await message.answer(
-            "موجودی کیف پول: ۰ تومان"
+            "💰 موجودی کیف پول: ۰ تومان"
         )
 
     elif text == "🎫 پشتیبانی":
 
         await message.answer(
-            "پیام خود را ارسال کنید؛ پشتیبانی بررسی می‌کند."
+            "🎫 پیام خود را ارسال کنید؛ "
+            "پشتیبانی بررسی می‌کند."
         )
 
     else:
@@ -578,9 +556,7 @@ async def on_shutdown(bot: Bot):
 # HEALTH
 # =========================================================
 
-async def health(
-    request
-):
+async def health(request):
 
     return web.Response(
         text="OK"
@@ -623,7 +599,7 @@ async def main():
 
     handler.register(
         app,
-        path=WEBHOOK_PATH,
+        path=WEBHOOK_PATH
     )
 
     dp.startup.register(
@@ -637,7 +613,7 @@ async def main():
     setup_application(
         app,
         dp,
-        bot=bot,
+        bot=bot
     )
 
     runner = web.AppRunner(
@@ -649,7 +625,7 @@ async def main():
     site = web.TCPSite(
         runner,
         "0.0.0.0",
-        PORT,
+        PORT
     )
 
     await site.start()
@@ -661,12 +637,5 @@ async def main():
     await asyncio.Event().wait()
 
 
-# =========================================================
-# RUN
-# =========================================================
-
 if __name__ == "__main__":
-
-    asyncio.run(
-        main()
-    )
+    asyncio.run(main())
