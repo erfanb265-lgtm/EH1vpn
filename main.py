@@ -388,6 +388,54 @@ async def reject(cq):
     i=int(cq.data[3:]); o=get_order(i); c=conn(); c.execute("UPDATE orders SET status='rejected' WHERE id=?",(i,)); c.commit(); c.close()
     await cq.message.edit_reply_markup(reply_markup=None); await cq.message.answer(f"❌ رسید سفارش #{i} رد شد."); await cq.bot.send_message(o["telegram_id"],f"❌ رسید سفارش #{i} رد شد.")
 
+@dp.message(Command("status"))
+async def status_cmd(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
+    await m.answer(
+        "🛠 وضعیت ربات\n\n"
+        f"AUTO_PROVIDER_PURCHASE: {'ON' if AUTO_PROVIDER_PURCHASE else 'OFF'}\n"
+        f"PROVIDER_DEBUG: {'ON' if PROVIDER_DEBUG else 'OFF'}\n"
+        f"Business Connection: {'SET' if BUSINESS_CONNECTION_ID else 'NOT SET'}\n"
+        f"DB: {DB_PATH}"
+    )
+
+@dp.message(Command("provider_queue"))
+async def provider_queue(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
+    c = conn()
+    rows = c.execute(
+        "SELECT id,provider,status,product_key,amount FROM orders WHERE status IN ('provider_pending','provider_queued') ORDER BY id ASC"
+    ).fetchall(); c.close()
+    if not rows:
+        await m.answer("📭 صف خرید Provider خالی است."); return
+    lines = [f"#{r['id']} | {r['provider']} | {PRODUCTS[r['product_key']]['name']} | {r['status']} | {r['amount']:,}" for r in rows]
+    await m.answer("📋 صف خرید Provider:\n\n" + "\n".join(lines))
+
+@dp.message(Command("provider_retry"))
+async def provider_retry(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
+    parts = m.text.split(maxsplit=1)
+    if len(parts) != 2 or not parts[1].isdigit():
+        await m.answer("فرمت: /provider_retry ORDER_ID"); return
+    oid = int(parts[1]); o = get_order(oid)
+    if not o or o["status"] not in ("provider_error", "provider_queued", "approved"):
+        await m.answer("❌ سفارش قابل تلاش مجدد نیست."); return
+    c = conn(); c.execute("UPDATE orders SET status='approved' WHERE id=?", (oid,)); c.commit(); c.close()
+    try:
+        await start_provider_purchase(m.bot, oid)
+        await m.answer(f"🔄 تلاش مجدد سفارش #{oid} شروع شد.")
+    except Exception as e:
+        await m.answer(f"❌ خطا: {type(e).__name__}: {e}")
+
+@dp.message(Command("orders"))
+async def orders(m:types.Message):
+    if m.from_user.id!=ADMIN_ID:return
+    c=conn(); rows=c.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 20").fetchall(); c.close()
+    await m.answer("📋 سفارش‌ها:\n\n"+("\n".join(f"#{r['id']} | {PRODUCTS[r['product_key']]['name']} | {r['amount']:,} | {r['status']}" for r in rows) if rows else "موردی نیست."))
+
 @dp.message(F.text)
 async def text(m:types.Message):
     save_user(m); s=states.get(m.from_user.id)
@@ -447,53 +495,6 @@ async def business(m: types.Message):
 
     await finish_provider_order(m.bot, row["id"], url, body)
 
-@dp.message(Command("status"))
-async def status_cmd(m: types.Message):
-    if m.from_user.id != ADMIN_ID:
-        return
-    await m.answer(
-        "🛠 وضعیت ربات\n\n"
-        f"AUTO_PROVIDER_PURCHASE: {'ON' if AUTO_PROVIDER_PURCHASE else 'OFF'}\n"
-        f"PROVIDER_DEBUG: {'ON' if PROVIDER_DEBUG else 'OFF'}\n"
-        f"Business Connection: {'SET' if BUSINESS_CONNECTION_ID else 'NOT SET'}\n"
-        f"DB: {DB_PATH}"
-    )
-
-@dp.message(Command("provider_queue"))
-async def provider_queue(m: types.Message):
-    if m.from_user.id != ADMIN_ID:
-        return
-    c = conn()
-    rows = c.execute(
-        "SELECT id,provider,status,product_key,amount FROM orders WHERE status IN ('provider_pending','provider_queued') ORDER BY id ASC"
-    ).fetchall(); c.close()
-    if not rows:
-        await m.answer("📭 صف خرید Provider خالی است."); return
-    lines = [f"#{r['id']} | {r['provider']} | {PRODUCTS[r['product_key']]['name']} | {r['status']} | {r['amount']:,}" for r in rows]
-    await m.answer("📋 صف خرید Provider:\n\n" + "\n".join(lines))
-
-@dp.message(Command("provider_retry"))
-async def provider_retry(m: types.Message):
-    if m.from_user.id != ADMIN_ID:
-        return
-    parts = m.text.split(maxsplit=1)
-    if len(parts) != 2 or not parts[1].isdigit():
-        await m.answer("فرمت: /provider_retry ORDER_ID"); return
-    oid = int(parts[1]); o = get_order(oid)
-    if not o or o["status"] not in ("provider_error", "provider_queued", "approved"):
-        await m.answer("❌ سفارش قابل تلاش مجدد نیست."); return
-    c = conn(); c.execute("UPDATE orders SET status='approved' WHERE id=?", (oid,)); c.commit(); c.close()
-    try:
-        await start_provider_purchase(m.bot, oid)
-        await m.answer(f"🔄 تلاش مجدد سفارش #{oid} شروع شد.")
-    except Exception as e:
-        await m.answer(f"❌ خطا: {type(e).__name__}: {e}")
-
-@dp.message(Command("orders"))
-async def orders(m:types.Message):
-    if m.from_user.id!=ADMIN_ID:return
-    c=conn(); rows=c.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 20").fetchall(); c.close()
-    await m.answer("📋 سفارش‌ها:\n\n"+("\n".join(f"#{r['id']} | {PRODUCTS[r['product_key']]['name']} | {r['amount']:,} | {r['status']}" for r in rows) if rows else "موردی نیست."))
 
 async def health(req): return web.Response(text="OK")
 async def startup(bot:Bot):
