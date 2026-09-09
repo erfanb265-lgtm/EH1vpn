@@ -253,10 +253,13 @@ async def finish_provider_order(bot: Bot, order_id: int, url: str, raw_body: str
     if not order:
         return
     c = conn()
-    c.execute(
+    cur = c.execute(
         "UPDATE orders SET subscription_url=?, config_text=?, status='completed' WHERE id=? AND status='provider_pending'",
         (url, raw_body, order_id),
     )
+    if cur.rowcount != 1:
+        c.close()
+        return
     c.execute(
         "INSERT INTO services(telegram_id,order_id,product_key,provider,subscription_url,config_text,status,created_at) VALUES(?,?,?,?,?,?,?,?)",
         (order["telegram_id"], order_id, order["product_key"], order["provider"], url, raw_body, "active", datetime.utcnow().isoformat()),
@@ -404,7 +407,11 @@ async def text(m:types.Message):
     elif m.text=="💰 کیف پول": await m.answer("💰 موجودی کیف پول EhVPN: ۰ تومان")
     elif m.text=="🔄 تمدید سرویس": await m.answer("🔄 تمدید بعد از فعال شدن استعلام سرویس‌ها فعال می‌شود.")
     elif m.text=="🎫 پشتیبانی": await m.answer("🎫 پیام خود را ارسال کنید.")
-    else: await m.answer("لطفاً یکی از گزینه‌های منو را انتخاب کنید.",reply_markup=main_menu())
+    elif m.text.startswith("/"):
+        # Do not let the catch-all text handler swallow admin commands.
+        return
+    else:
+        await m.answer("لطفاً یکی از گزینه‌های منو را انتخاب کنید.",reply_markup=main_menu())
 
 @dp.business_message()
 async def business(m: types.Message):
@@ -439,6 +446,18 @@ async def business(m: types.Message):
         return
 
     await finish_provider_order(m.bot, row["id"], url, body)
+
+@dp.message(Command("status"))
+async def status_cmd(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
+    await m.answer(
+        "🛠 وضعیت ربات\n\n"
+        f"AUTO_PROVIDER_PURCHASE: {'ON' if AUTO_PROVIDER_PURCHASE else 'OFF'}\n"
+        f"PROVIDER_DEBUG: {'ON' if PROVIDER_DEBUG else 'OFF'}\n"
+        f"Business Connection: {'SET' if BUSINESS_CONNECTION_ID else 'NOT SET'}\n"
+        f"DB: {DB_PATH}"
+    )
 
 @dp.message(Command("provider_queue"))
 async def provider_queue(m: types.Message):
