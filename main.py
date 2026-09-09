@@ -1,4 +1,4 @@
-import os, sqlite3, asyncio
+import os, sqlite3, asyncio, re
 from datetime import datetime
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F, types
@@ -19,14 +19,23 @@ BUSINESS_CONNECTION_ID = os.getenv("BUSINESS_CONNECTION_ID")
 DB_PATH = os.getenv("DB_PATH", "ehvpn.db")
 
 PRODUCTS = {
-    "hvpn": dict(name="H_VPN حجم دلخواه", provider="HVPN", provider_name="@H_VPNbot", mode="gb", provider_price=5000, sell_price=10000, min_gb=10, duration="30 روز"),
-    "mx_limitless": dict(name="MXCloud Limitless", provider="MXCloud", provider_name="@mxcloudbot", mode="fixed", provider_price=280000, sell_price=450000, duration="30 روز", details="حجم نامحدود، 1 کاربر"),
-    "mx_tunnel": dict(name="MXCloud Tunnel Gaming", provider="MXCloud", provider_name="@mxcloudbot", mode="gb", provider_price=5000, sell_price=15000, min_gb=1, duration="نامحدود", details="کاربر نامحدود"),
-    "svn_direct_1": dict(name="SVN Direct یک ماهه", provider="SVN", provider_name="@SvnProBot", mode="fixed", provider_price=42000, sell_price=120000, duration="1 ماه", details="نامحدود"),
-    "svn_direct_2": dict(name="SVN Direct دو ماهه", provider="SVN", provider_name="@SvnProBot", mode="fixed", provider_price=62000, sell_price=260000, duration="2 ماه", details="نامحدود"),
-    "svn_tunnel_10": dict(name="SVN Tunnel 10GB", provider="SVN", provider_name="@SvnProBot", mode="fixed", provider_price=59000, sell_price=160000, duration="1 ماه", details="10GB"),
-    "svn_tunnel_20": dict(name="SVN Tunnel 20GB", provider="SVN", provider_name="@SvnProBot", mode="fixed", provider_price=122000, sell_price=260000, duration="1 ماه", details="20GB"),
-    "svn_tunnel_30": dict(name="SVN Tunnel 30GB", provider="SVN", provider_name="@SvnProBot", mode="fixed", provider_price=162000, sell_price=360000, duration="1 ماه", details="30GB"),
+    "hvpn": dict(name="👑 EH Premium", category="premium", provider="HVPN", provider_name="@H_VPNbot", mode="gb", provider_price=5000, sell_price=10000, min_gb=10, duration="30 روز",
+                 details="بالاترین سطح سرعت و پایداری",
+                 description='👑 EH Premium\\n\\n🚀 بالاترین سطح سرعت و پایداری در مجموعه\\n🛡️ مناسب استفاده سنگین و طولانی\u200cمدت\\n⚡ پایداری بسیار بالا در شرایط اختلال و محدودیت اینترنت\\n⭐ انتخاب پیشنهادی برای کسانی که کیفیت اولویت اولشان است'),
+    "mx_limitless": dict(name="🌐 EH Normal", category="normal", provider="MXCloud", provider_name="@mxcloudbot", mode="fixed", provider_price=280000, sell_price=450000, duration="30 روز", details="حجم نامحدود، 1 کاربر",
+                 description='🌐 EH Normal\\n\\n♾️ حجم نامحدود\\n📱 مناسب وب\u200cگردی، شبکه\u200cهای اجتماعی، پیام\u200cرسان\u200cها و استفاده روزمره\\n🌍 انتخاب مناسب برای مصرف معمولی\\nℹ️ پایداری آن در سطح EH Premium نیست'),
+    "mx_tunnel": dict(name="🎮 EH Gaming", category="gaming", provider="MXCloud", provider_name="@mxcloudbot", mode="gb", provider_price=5000, sell_price=15000, min_gb=1, duration="نامحدود", details="کاربر نامحدود",
+                 description='🎮 EH Gaming\\n\\n🎯 طراحی\u200cشده برای گیمرها و استفاده\u200cهایی که پینگ اهمیت دارد\\n⚡ تمرکز روی تأخیر پایین و اتصال روان\\n🎮 مناسب بازی\u200cهای آنلاین\\n📊 حجم بر اساس انتخاب شما'),
+    "svn_direct_1": dict(name="💰 EH Economy — Direct 1M", category="economy", provider="SVN", provider_name="@SvnProBot", mode="fixed", provider_price=42000, sell_price=120000, duration="1 ماه", details="نامحدود",
+                 description='🔹 EH Economy — Direct\\n\\n💵 اقتصادی\u200cترین انتخاب\\n📱 مناسب تلگرام، پیام\u200cرسان\u200cها و پلتفرم\u200cهای چت\\n🚀 سرعت قابل قبول برای مصرف روزمره\\n✅ مناسب وقتی قیمت اهمیت بیشتری دارد'),
+    "svn_direct_2": dict(name="💰 EH Economy — Direct 2M", category="economy", provider="SVN", provider_name="@SvnProBot", mode="fixed", provider_price=62000, sell_price=260000, duration="2 ماه", details="نامحدود",
+                 description='🔹 EH Economy — Direct\\n\\n💵 اقتصادی و دوماهه\\n📱 مناسب تلگرام، پیام\u200cرسان\u200cها و پلتفرم\u200cهای چت\\n🚀 سرعت قابل قبول برای مصرف روزمره'),
+    "svn_tunnel_10": dict(name="💰 EH Economy — Tunnel 10GB", category="economy", provider="SVN", provider_name="@SvnProBot", mode="fixed", provider_price=59000, sell_price=160000, duration="1 ماه", details="10GB",
+                 description='🔸 EH Economy — Tunnel\\n\\n💰 اقتصادی با پایداری بهتر\\n🛡️ مناسب استفاده روزمره و پیام\u200cرسان\u200cها\\n📊 حجم 10GB\\n✅ انتخاب مناسب برای سرویس اقتصادی و مطمئن\u200cتر'),
+    "svn_tunnel_20": dict(name="💰 EH Economy — Tunnel 20GB", category="economy", provider="SVN", provider_name="@SvnProBot", mode="fixed", provider_price=122000, sell_price=260000, duration="1 ماه", details="20GB",
+                 description='🔸 EH Economy — Tunnel\\n\\n💰 اقتصادی با پایداری بهتر\\n🛡️ مناسب استفاده روزمره و پیام\u200cرسان\u200cها\\n📊 حجم 20GB'),
+    "svn_tunnel_30": dict(name="💰 EH Economy — Tunnel 30GB", category="economy", provider="SVN", provider_name="@SvnProBot", mode="fixed", provider_price=162000, sell_price=360000, duration="1 ماه", details="30GB",
+                 description='🔸 EH Economy — Tunnel\\n\\n💰 اقتصادی با پایداری بهتر\\n🛡️ مناسب استفاده روزمره و پیام\u200cرسان\u200cها\\n📊 حجم 30GB'),
 }
 PROVIDER_CHAT_IDS = {"HVPN": 6683626212, "MXCloud": 8614664198, "SVN": 6606593549}
 dp = Dispatcher()
@@ -50,9 +59,30 @@ def save_user(m):
 def main_menu():
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🛒 خرید سرویس"),KeyboardButton(text="📱 سرویس‌های من")],[KeyboardButton(text="📊 استعلام وضعیت"),KeyboardButton(text="💰 کیف پول")],[KeyboardButton(text="🔄 تمدید سرویس"),KeyboardButton(text="🎫 پشتیبانی")]],resize_keyboard=True)
 
+def category_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👑 EH Premium", callback_data="cat:premium")],
+        [InlineKeyboardButton(text="🌐 EH Normal", callback_data="cat:normal")],
+        [InlineKeyboardButton(text="🎮 EH Gaming", callback_data="cat:gaming")],
+        [InlineKeyboardButton(text="💰 EH Economy", callback_data="cat:economy")],
+    ])
+
+def category_intro(category):
+    return {
+        "premium": "👑 EH Premium\n\n🚀 بالاترین سطح سرعت و پایداری\n🛡️ مناسب استفاده سنگین و طولانی‌مدت\n⚡ پایداری بسیار بالا در شرایط اختلال\n⭐ اگر کیفیت اولویت اول شماست، این گزینه را انتخاب کنید.",
+        "normal": "🌐 EH Normal\n\n♾️ حجم نامحدود\n📱 مناسب وب‌گردی و استفاده روزمره\n💬 مناسب شبکه‌های اجتماعی و پیام‌رسان‌ها\nℹ️ پایداری آن از EH Premium کمتر است.",
+        "gaming": "🎮 EH Gaming\n\n🎯 مناسب بازی‌های آنلاین\n⚡ تمرکز روی پینگ و تأخیر پایین\n🎮 مناسب کاربرانی که تجربه روان هنگام بازی می‌خواهند.",
+        "economy": "💰 EH Economy\n\n💵 اقتصادی‌ترین خانواده سرویس‌ها\n📱 مناسب تلگرام و پلتفرم‌های چت\n🔸 Tunnel پایداری بیشتری نسبت به Direct دارد."
+    }[category]
+
+def category_products_kb(category):
+    keys = [k for k, p in PRODUCTS.items() if p["category"] == category]
+    rows = [[InlineKeyboardButton(text=PRODUCTS[k]["name"], callback_data="p:"+k)] for k in keys]
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به دسته‌ها", callback_data="back:cats")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
 def product_kb():
-    names=[("hvpn","H_VPN حجم دلخواه"),("mx_limitless","MXCloud Limitless"),("mx_tunnel","MXCloud Tunnel Gaming"),("svn_direct_1","SVN Direct یک ماهه"),("svn_direct_2","SVN Direct دو ماهه"),("svn_tunnel_10","SVN Tunnel 10GB"),("svn_tunnel_20","SVN Tunnel 20GB"),("svn_tunnel_30","SVN Tunnel 30GB")]
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=n,callback_data="p:"+k)] for k,n in names])
+    return category_kb()
 
 def get_order(i):
     c=conn(); r=c.execute("SELECT * FROM orders WHERE id=?",(i,)).fetchone(); c.close(); return r
@@ -71,16 +101,146 @@ async def start(m:types.Message):
 
 @dp.message(F.text=="🛒 خرید سرویس")
 async def buy(m:types.Message):
-    save_user(m); await m.answer("🛒 محصول موردنظر را انتخاب کنید:",reply_markup=product_kb())
+    save_user(m)
+    await m.answer(
+        "🛒 انتخاب سرویس\n\n"
+        "اول نوع سرویس مناسب خودت رو انتخاب کن 👇\n\n"
+        "👑 Premium — بالاترین سرعت و پایداری\n"
+        "🌐 Normal — استفاده روزمره و حجم نامحدود\n"
+        "🎮 Gaming — مخصوص گیمینگ و پینگ پایین\n"
+        "💰 Economy — اقتصادی و مناسب مصرف معمولی",
+        reply_markup=category_kb()
+    )
+
+@dp.callback_query(F.data.startswith("cat:"))
+async def category(cq:types.CallbackQuery):
+    category_name = cq.data[4:]
+    await cq.message.answer(category_intro(category_name), reply_markup=category_products_kb(category_name))
+    await cq.answer()
+
+@dp.callback_query(F.data=="back:cats")
+async def back_categories(cq:types.CallbackQuery):
+    await cq.message.answer("🛒 انتخاب دسته سرویس 👇", reply_markup=category_kb())
+    await cq.answer()
+
+
+def provider_chat(provider):
+    return PROVIDER_CHAT_IDS[provider]
+
+async def send_provider_text(bot: Bot, provider: str, text: str):
+    """Send a text message to the provider through the connected Telegram Business account."""
+    if not BUSINESS_CONNECTION_ID:
+        raise RuntimeError("BUSINESS_CONNECTION_ID is not set")
+    return await bot.send_message(
+        chat_id=provider_chat(provider),
+        text=text,
+        business_connection_id=BUSINESS_CONNECTION_ID,
+    )
+
+def provider_steps(order):
+    """Text-equivalent navigation. This is intentionally configurable because
+    providers may use ReplyKeyboard or InlineKeyboard buttons."""
+    p = PRODUCTS[order["product_key"]]
+    gb = order["quantity_gb"]
+
+    if order["product_key"] == "hvpn":
+        return [
+            "خرید سرویس جدید",
+            "سرویس حجم دلخواه",
+            "5000",
+            str(gb),
+            "پرداخت از اعتبار",
+        ]
+
+    if order["product_key"] == "mx_limitless":
+        return [
+            "خرید سرویس جدید",
+            "Limitless",
+            "30",
+            "1",
+            "پرداخت از موجودی",
+        ]
+
+    if order["product_key"] == "mx_tunnel":
+        return [
+            "خرید سرویس جدید",
+            "Premium",
+            str(gb),
+            "پرداخت از موجودی",
+        ]
+
+    if order["product_key"] == "svn_direct_1":
+        return ["اشتراک نا محدود مستقیم", "1 ماهه", "پرداخت از اعتبار"]
+
+    if order["product_key"] == "svn_direct_2":
+        return ["اشتراک نا محدود مستقیم", "2 ماهه", "پرداخت از اعتبار"]
+
+    if order["product_key"].startswith("svn_tunnel_"):
+        gb = order["quantity_gb"] or int(order["product_key"].split("_")[-1].replace("GB", ""))
+        return ["اشتراک حجمی تانل شده", f"{gb}GB", "پرداخت از اعتبار"]
+
+    return []
+
+async def start_provider_purchase(bot: Bot, order_id: int):
+    order = get_order(order_id)
+    if not order:
+        return
+    steps = provider_steps(order)
+    if not steps:
+        raise RuntimeError("No provider flow configured")
+
+    c = conn()
+    c.execute("UPDATE orders SET status='provider_pending' WHERE id=? AND status='approved'", (order_id,))
+    c.commit()
+    c.close()
+
+    await bot.send_message(
+        ADMIN_ID,
+        f"🔄 شروع خرید خودکار سفارش #{order_id}\\n"
+        f"🏪 {order['provider']}\\n"
+        f"📦 {PRODUCTS[order['product_key']]['name']}\\n\\n"
+        "مراحل به‌صورت متنی برای Provider ارسال می‌شوند."
+    )
+
+    # Send navigation one step at a time. We never send a payment step
+    # until the preceding flow has been delivered.
+    for step in steps:
+        await send_provider_text(bot, order["provider"], step)
+        await asyncio.sleep(1.5)
+
+@dp.message(Command("provider_send"))
+async def provider_send(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
+    parts = m.text.split(maxsplit=2)
+    if len(parts) < 3:
+        await m.answer("فرمت: /provider_send HVPN متن")
+        return
+    provider, msg = parts[1].upper(), parts[2]
+    if provider not in PROVIDER_CHAT_IDS:
+        await m.answer("Provider نامعتبر است: HVPN / MXCLOUD / SVN")
+        return
+    try:
+        await send_provider_text(m.bot, provider, msg)
+        await m.answer(f"✅ ارسال شد به {provider}")
+    except Exception as e:
+        await m.answer(f"❌ خطا: {type(e).__name__}: {e}")
 
 @dp.callback_query(F.data.startswith("p:"))
 async def product(cq:types.CallbackQuery):
     k=cq.data[2:]; p=PRODUCTS[k]
     if p["mode"]=="gb":
         states[cq.from_user.id]={"key":k}
-        await cq.message.answer(f"📦 {p['name']}\n💰 قیمت فروش: {p['sell_price']:,} تومان/GB\n📆 {p['duration']}\n🔢 حداقل: {p['min_gb']}GB\n\nتعداد گیگابایت را با عدد لاتین وارد کنید.")
+        await cq.message.answer(p["description"] + f"\n\n💰 قیمت: {p['sell_price']:,} تومان / GB\n📆 مدت: {p['duration']}\n🔢 حداقل خرید: {p['min_gb']}GB\n\nتعداد گیگابایت را با عدد لاتین وارد کنید.")
     else:
-        o=create_order(cq.from_user.id,k); await cq.message.answer(summary(o["id"]),reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📸 ارسال رسید",callback_data=f"help:{o['id']}"),InlineKeyboardButton(text="❌ لغو",callback_data=f"cancel:{o['id']}")]]))
+        o=create_order(cq.from_user.id,k)
+        await cq.message.answer(
+            p["description"] + "\n\n" + summary(o["id"]),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="📸 ارسال رسید",callback_data=f"help:{o['id']}"),
+                InlineKeyboardButton(text="❌ لغو",callback_data=f"cancel:{o['id']}")
+            ]])
+        )
     await cq.answer()
 
 @dp.message(F.photo)
@@ -103,14 +263,49 @@ async def cancel(cq):
     c=conn(); c.execute("UPDATE orders SET status='cancelled' WHERE id=? AND status='awaiting_receipt'",(i,)); c.commit(); c.close(); await cq.message.answer("❌ سفارش لغو شد."); await cq.answer()
 
 @dp.callback_query(F.data.startswith("ok:"))
-async def approve(cq):
-    if cq.from_user.id!=ADMIN_ID: await cq.answer("دسترسی ندارید.",show_alert=True); return
-    i=int(cq.data[3:]); o=get_order(i)
-    if not o or o["status"]!="receipt_submitted": await cq.answer("این سفارش قبلاً بررسی شده.",show_alert=True); return
-    c=conn(); c.execute("UPDATE orders SET status='approved',approved_at=? WHERE id=?",(datetime.utcnow().isoformat(),i)); c.commit(); c.close()
-    await cq.message.edit_reply_markup(reply_markup=None); await cq.message.answer(f"✅ سفارش #{i} تأیید شد.")
-    await cq.bot.send_message(o["telegram_id"],f"✅ پرداخت سفارش #{i} تأیید شد.\n⏳ سرویس شما در حال آماده‌سازی است.")
-    # خرید خودکار Provider بعد از تست و ثبت دقیق دکمه‌های خرید هر Provider به این قسمت متصل می‌شود.
+async def approve(cq: types.CallbackQuery):
+    if cq.from_user.id != ADMIN_ID:
+        await cq.answer("دسترسی ندارید.", show_alert=True)
+        return
+    i = int(cq.data[3:])
+    o = get_order(i)
+    if not o or o["status"] != "receipt_submitted":
+        await cq.answer("این سفارش قبلاً بررسی شده.", show_alert=True)
+        return
+
+    c = conn()
+    c.execute(
+        "UPDATE orders SET status='approved',approved_at=? WHERE id=?",
+        (datetime.utcnow().isoformat(), i)
+    )
+    c.commit()
+    c.close()
+
+    await cq.message.edit_reply_markup(reply_markup=None)
+    await cq.message.answer(f"✅ سفارش #{i} تأیید شد.")
+    await cq.bot.send_message(
+        o["telegram_id"],
+        f"✅ پرداخت سفارش #{i} تأیید شد.\n⏳ سرویس شما در حال آماده‌سازی است."
+    )
+
+    if os.getenv("AUTO_PROVIDER_PURCHASE", "false").lower() == "true":
+        try:
+            await start_provider_purchase(cq.bot, i)
+        except Exception as e:
+            c = conn()
+            c.execute("UPDATE orders SET status='provider_error' WHERE id=?", (i,))
+            c.commit()
+            c.close()
+            await cq.bot.send_message(
+                ADMIN_ID,
+                f"❌ خرید خودکار سفارش #{i} با خطا متوقف شد:\n"
+                f"{type(e).__name__}: {e}"
+            )
+    else:
+        await cq.bot.send_message(
+            ADMIN_ID,
+            f"ℹ️ سفارش #{i} تأیید شد ولی AUTO_PROVIDER_PURCHASE خاموش است."
+        )
 
 @dp.callback_query(F.data.startswith("no:"))
 async def reject(cq):
@@ -134,9 +329,45 @@ async def text(m:types.Message):
     else: await m.answer("لطفاً یکی از گزینه‌های منو را انتخاب کنید.",reply_markup=main_menu())
 
 @dp.business_message()
-async def business(m:types.Message):
-    print("BUSINESS",m.business_connection_id,m.chat.id,m.chat.username,m.text)
-    await m.bot.send_message(ADMIN_ID,f"📥 پیام Business\n\nConnection ID: {m.business_connection_id}\nChat ID: {m.chat.id}\nUsername: @{m.chat.username if m.chat.username else 'ندارد'}\n\nمتن:\n{m.text or m.caption or 'بدون متن'}")
+async def business(m: types.Message):
+    print("BUSINESS", m.business_connection_id, m.chat.id, m.chat.username, m.text)
+
+    # Forward every provider response to admin so the exact flow/buttons can be inspected.
+    await m.bot.send_message(
+        ADMIN_ID,
+        f"📥 پیام Business\n\n"
+        f"Connection ID: {m.business_connection_id}\n"
+        f"Chat ID: {m.chat.id}\n"
+        f"Username: @{m.chat.username if m.chat.username else 'ندارد'}\n\n"
+        f"متن:\n{m.text or m.caption or 'بدون متن'}"
+    )
+
+    # If the provider returned a subscription/config URL in text, keep a copy
+    # against the most recent provider_pending order for that provider.
+    body = m.text or m.caption or ""
+    for provider, chat_id in PROVIDER_CHAT_IDS.items():
+        if m.chat.id == chat_id:
+            c = conn()
+            row = c.execute(
+                "SELECT * FROM orders WHERE provider=? AND status='provider_pending' "
+                "ORDER BY id DESC LIMIT 1", (provider,)
+            ).fetchone()
+            if row:
+                urls = re.findall(r'https?://\\S+', body)
+                config = body if body else None
+                if urls:
+                    c.execute(
+                        "UPDATE orders SET subscription_url=?, config_text=? WHERE id=?",
+                        (urls[0].rstrip(").,]"), config, row["id"])
+                    )
+                    c.commit()
+                    await m.bot.send_message(
+                        row["telegram_id"],
+                        f"🎉 سرویس سفارش #{row['id']} آماده شد!\n\n"
+                        f"🔗 لینک اشتراک:\n{urls[0].rstrip(').,]')}"
+                    )
+                c.close()
+            break
 
 @dp.message(Command("orders"))
 async def orders(m:types.Message):
