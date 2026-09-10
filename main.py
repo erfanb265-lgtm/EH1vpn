@@ -60,7 +60,7 @@ def save_user(m):
     c.commit(); c.close()
 
 def main_menu():
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🛒 خرید سرویس"),KeyboardButton(text="📱 سرویس‌های من")],[KeyboardButton(text="📊 استعلام وضعیت"),KeyboardButton(text="💰 کیف پول")],[KeyboardButton(text="🔄 تمدید سرویس"),KeyboardButton(text="🎫 پشتیبانی")]],resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="خرید سرویس جدید 🚀"),KeyboardButton(text="📱 سرویس‌های من")],[KeyboardButton(text="📊 استعلام وضعیت"),KeyboardButton(text="💰 کیف پول")],[KeyboardButton(text="🔄 تمدید سرویس"),KeyboardButton(text="🎫 پشتیبانی")]],resize_keyboard=True)
 
 def category_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -443,6 +443,9 @@ async def text(m:types.Message):
         p=PRODUCTS[s["key"]]; gb=int(m.text)
         if gb<p["min_gb"]: await m.answer(f"❌ حداقل {p['min_gb']}GB است."); return
         o=create_order(m.from_user.id,s["key"],gb); states.pop(m.from_user.id,None); await m.answer(summary(o["id"]),reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📸 ارسال رسید",callback_data=f"help:{o['id']}"),InlineKeyboardButton(text="❌ لغو",callback_data=f"cancel:{o['id']}")]])); return
+    if m.text == "خرید سرویس جدید 🚀":
+        await m.answer("نوع سرویس را انتخاب کنید:", reply_markup=category_kb())
+        return
     if m.text in ("📱 سرویس‌های من","📊 استعلام وضعیت"):
         c=conn(); rows=c.execute("SELECT * FROM services WHERE telegram_id=? ORDER BY id DESC",(m.from_user.id,)).fetchall(); c.close()
         if not rows:
@@ -458,6 +461,8 @@ async def text(m:types.Message):
     elif m.text.startswith("/"):
         # Do not let the catch-all text handler swallow admin commands.
         return
+    elif m.text in ("🛒 خرید سرویس", "خرید سرویس جدید"):
+        await m.answer("نوع سرویس را انتخاب کنید:", reply_markup=category_kb())
     else:
         await m.answer("لطفاً یکی از گزینه‌های منو را انتخاب کنید.",reply_markup=main_menu())
 
